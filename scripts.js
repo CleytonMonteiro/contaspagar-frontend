@@ -1,9 +1,13 @@
 // ========================================
 //   CONFIGURAÇÕES GLOBAIS E REFERÊNCIAS
 // ========================================
+// URL de Produção (ONLINE)
 const API_URL = 'https://contaspagar-backend-1.onrender.com/api/contas';
 
-// Pegando referências dos elementos do HTML
+// URL de Desenvolvimento (LOCAL)
+//const API_URL = 'http://localhost:8080/api/contas';
+
+// Referências aos elementos do HTML
 const tabelaContas = document.getElementById('tabela-contas');
 const formNovaConta = document.getElementById('form-nova-conta');
 const btnImprimir = document.getElementById('btn-imprimir');
@@ -14,7 +18,7 @@ const abasMesesContainer = document.getElementById('abas-meses');
 const resumoMesContainer = document.getElementById('resumo-mes');
 const tituloTabela = document.getElementById('titulo-tabela');
 
-// Variáveis para armazenar o estado da aplicação
+// Variáveis de estado
 let todasAsContas = [];
 let dadosPorMes = {};
 
@@ -42,7 +46,7 @@ async function inicializar() {
         todasAsContas = await response.json();
         processarErenderizar(todasAsContas);
     } catch (error) {
-        tabelaContas.innerHTML = `<tr><td colspan="7">Erro ao carregar os dados. Verifique se o backend está rodando.</td></tr>`;
+        tabelaContas.innerHTML = `<tr><td colspan="8">Erro ao carregar os dados. Verifique se o backend está rodando.</td></tr>`;
         console.error('Erro na inicialização:', error);
     }
 }
@@ -53,11 +57,7 @@ function processarErenderizar(listaDeContas) {
         const data = new Date(conta.dataVencimento._seconds * 1000);
         const mesKey = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
         if (!acc[mesKey]) {
-            acc[mesKey] = {
-                contas: [],
-                total: 0,
-                nome: data.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })
-            };
+            acc[mesKey] = { contas: [], total: 0, nome: data.toLocaleString('pt-BR', { month: 'long', year: 'numeric' }) };
         }
         acc[mesKey].contas.push(conta);
         acc[mesKey].total += conta.valorPagar;
@@ -89,7 +89,7 @@ function renderizarAbas() {
 function renderizarDadosDoMes(mesKey) {
     if (!mesKey || !dadosPorMes[mesKey]) {
         resumoMesContainer.innerHTML = 'Nenhuma conta para o período selecionado.';
-        tabelaContas.innerHTML = `<tr><td colspan="7">Selecione um mês ou limpe a busca.</td></tr>`;
+        tabelaContas.innerHTML = `<tr><td colspan="8">Selecione um mês ou limpe a busca.</td></tr>`;
         tituloTabela.innerText = 'Contas';
         return;
     }
@@ -102,7 +102,7 @@ function renderizarDadosDoMes(mesKey) {
     tituloTabela.innerText = `Contas de ${nomeMesFormatado}`;
     tabelaContas.innerHTML = '';
     if (dadosDoMes.contas.length === 0) {
-        tabelaContas.innerHTML = `<tr><td colspan="7">Nenhuma conta encontrada para este mês.</td></tr>`;
+        tabelaContas.innerHTML = `<tr><td colspan="8">Nenhuma conta encontrada para este mês.</td></tr>`;
         return;
     }
     dadosDoMes.contas.forEach(conta => {
@@ -110,7 +110,19 @@ function renderizarDadosDoMes(mesKey) {
         if (conta.repassadoFinanceiro) tr.classList.add('repassado');
         const botaoToggle = conta.repassadoFinanceiro ? `<button class="btn btn-sm btn-warning btn-toggle-repassado" data-id="${conta.id}" data-repassado="true">↩️ Desfazer</button>` : `<button class="btn btn-sm btn-success btn-toggle-repassado" data-id="${conta.id}" data-repassado="false">✔️ Repassar</button>`;
         const textoParcela = conta.totalParcelas > 1 ? `${conta.parcelaAtual}/${conta.totalParcelas}` : 'Única';
-        tr.innerHTML = `<td>${formatarData(conta.dataVencimento)}</td><td class="col-fornecedor">${conta.fornecedor}</td><td class="col-historico">${conta.historico}</td><td>${textoParcela}</td><td>${formatarMoeda(conta.valorPagar)}</td><td>${conta.repassadoFinanceiro ? 'Repassado' : 'Pendente'}</td><td>${botaoToggle}<button class="btn btn-sm btn-danger btn-excluir" data-id="${conta.id}">❌ Excluir</button></td>`;
+        tr.innerHTML = `
+            <td>${formatarData(conta.dataVencimento)}</td>
+            <td class="col-fornecedor">${conta.fornecedor}</td>
+            <td class="col-historico">${conta.historico}</td>
+            <td>${conta.notaFiscal || '-'}</td>
+            <td>${textoParcela}</td>
+            <td>${formatarMoeda(conta.valorPagar)}</td>
+            <td>${conta.repassadoFinanceiro ? 'Repassado' : 'Pendente'}</td>
+            <td>
+                ${botaoToggle}
+                <button class="btn btn-sm btn-danger btn-excluir" data-id="${conta.id}" data-total-parcelas="${conta.totalParcelas}">❌ Excluir</button>
+            </td>
+        `;
         tabelaContas.appendChild(tr);
     });
 }
@@ -121,18 +133,13 @@ function renderizarDadosDoMes(mesKey) {
 
 abasMesesContainer.addEventListener('click', (event) => {
     if (event.target.matches('.nav-link')) {
-        const mesKey = event.target.dataset.meskey;
-        renderizarDadosDoMes(mesKey);
+        renderizarDadosDoMes(event.target.dataset.meskey);
     }
 });
 
 formPesquisa.addEventListener('submit', (event) => {
     event.preventDefault();
     const termoBusca = inputPesquisa.value.toLowerCase();
-    if (!termoBusca) {
-        processarErenderizar(todasAsContas);
-        return;
-    }
     const contasFiltradas = todasAsContas.filter(conta =>
         (conta.fornecedor || '').toLowerCase().includes(termoBusca) ||
         (conta.historico || '').toLowerCase().includes(termoBusca) ||
@@ -163,14 +170,19 @@ formNovaConta.addEventListener('submit', async (event) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(conta),
         });
+        if (response.status === 409) {
+            const errorData = await response.json();
+            alert(errorData.message);
+            return;
+        }
         if (!response.ok) {
             throw new Error('Erro na resposta do servidor: ' + response.status);
         }
+        alert('Conta adicionada com sucesso!');
         formNovaConta.reset();
         inicializar();
     } catch (error) {
         console.error('Erro ao adicionar conta:', error);
-        // Alerta de depuração para mostrar o erro específico.
         alert('Ocorreu um erro ao tentar adicionar a conta:\n\n' + error.message);
     }
 });
@@ -179,6 +191,7 @@ tabelaContas.addEventListener('click', async (event) => {
     const elementoClicado = event.target;
     const contaId = elementoClicado.dataset.id;
     let acaoRealizada = false;
+    
     if (elementoClicado.classList.contains('btn-toggle-repassado')) {
         const statusAtual = elementoClicado.dataset.repassado === 'true';
         const novoStatus = !statusAtual;
@@ -195,8 +208,16 @@ tabelaContas.addEventListener('click', async (event) => {
             alert('Não foi possível atualizar a conta.');
         }
     }
+
     if (elementoClicado.classList.contains('btn-excluir')) {
-        if (confirm('Tem certeza que deseja excluir esta conta? Esta ação não pode ser desfeita.')) {
+        const totalParcelas = parseInt(elementoClicado.dataset.totalParcelas, 10);
+        let mensagem = 'Tem certeza que deseja excluir esta conta?';
+
+        if (totalParcelas > 1) {
+            mensagem = `Esta é uma conta parcelada (${totalParcelas}x). Excluir esta parcela irá remover TODAS as outras do mesmo grupo. Deseja continuar?`;
+        }
+
+        if (confirm(mensagem)) {
             try {
                 const response = await fetch(`${API_URL}/${contaId}`, { method: 'DELETE' });
                 if (!response.ok) throw new Error('Erro ao excluir conta');
@@ -207,12 +228,10 @@ tabelaContas.addEventListener('click', async (event) => {
             }
         }
     }
+
     if (acaoRealizada) inicializar();
 });
 
 btnImprimir.addEventListener('click', () => window.print());
 
-// ========================================
-//   INICIALIZAÇÃO DA PÁGINA
-// ========================================
 document.addEventListener('DOMContentLoaded', inicializar);
