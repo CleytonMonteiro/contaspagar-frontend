@@ -1,7 +1,7 @@
 // ========================================
 //   CONFIGURAÇÕES GLOBAIS E REFERÊNCIAS
 // ========================================
-const API_URL = 'https://contaspagar-backend.onrender.com/api/contas';
+const API_URL = 'https://contaspagar-backend-1.onrender.com/api/contas';
 
 // Pegando referências dos elementos do HTML
 const tabelaContas = document.getElementById('tabela-contas');
